@@ -2,6 +2,17 @@ import sys
 import os
 import subprocess
 
+# 分片会毫无征兆地卡死(主线程停在 poll(),CPU 不再增长),看门狗到点把进程杀掉,
+# 现场随之消失,连卡在哪都不知道。py-spy 在这台机器上用不了:yama 的
+# ptrace_scope=1 只允许附加到自己的子进程,而且没有免密 sudo。faulthandler 不需要
+# 任何特权 —— 卡住时 `kill -USR1 <pid>`,所有线程的 Python 栈就打进该分片日志。
+import faulthandler
+import signal as _signal
+
+faulthandler.enable()
+if hasattr(_signal, "SIGUSR1"):
+    faulthandler.register(_signal.SIGUSR1, all_threads=True, chain=False)
+
 sys.path.append("./")
 sys.path.append(f"./policy")
 sys.path.append("./description/utils")
@@ -181,24 +192,31 @@ class ModelClient:
             self.close()
             raise ConnectionError(f"Communication error: {str(e)}")
 
+    # 服务端回包最大也就几十 KB(动作块),留足余量;超过即说明流已错位。
+    MAX_MSG = 256 << 20
+
+    def _recv_exact(self, n):
+        """读满 n 字节。sock.recv(n) 不保证一次读满,长度头短读一次就会让
+        整条流错位,双方随后互等到死 —— 分片卡死在 poll() 的根因就是这个。"""
+        chunks, remaining = [], n
+        while remaining:
+            chunk = self.sock.recv(min(remaining, 65536))
+            if not chunk:
+                raise ConnectionError("Connection closed by server")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b''.join(chunks)
+
     def _recv_response(self):
         """Receive response with numpy array reconstruction"""
         # Read response length
-        len_data = self.sock.recv(4)
-        if not len_data:
-            raise ConnectionError("Connection closed by server")
-        
+        len_data = self._recv_exact(4)
+
         size = int.from_bytes(len_data, 'big')
-        
-        # Read complete response
-        chunks = []
-        received = 0
-        while received < size:
-            chunk = self.sock.recv(min(size - received, 4096))
-            if not chunk:
-                raise ConnectionError("Incomplete response received")
-            chunks.append(chunk)
-            received += len(chunk)
+        if size <= 0 or size > self.MAX_MSG:
+            raise ConnectionError(f"implausible response length {size}; stream desynced")
+
+        chunks = [self._recv_exact(size)]
         
         # Deserialize with numpy reconstruction
         return json_to_numpy(b''.join(chunks).decode('utf-8'))
@@ -326,7 +344,10 @@ def main(usr_args):
 
     st_seed = 100000 * (1 + seed)
     suc_nums = []
-    test_num = 100
+    # Was hardcoded to 100, which silently ignored --test_num overrides. Reading it
+    # from the config lets an evaluation be split across several shards (each shard
+    # takes a different `seed` batch index, hence a disjoint seed range).
+    test_num = int(usr_args.get("test_num", 100))
     topk = 1
 
     # model = get_model(usr_args)
