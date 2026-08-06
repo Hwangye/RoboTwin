@@ -58,6 +58,10 @@ class Camera:
         self.collect_head_camera = kwags["camera"].get("collect_head_camera", True)
         self.collect_wrist_camera = kwags["camera"].get("collect_wrist_camera", True)
 
+        # Number of static cameras whose RNG draws to emulate (see load_camera).
+        # None = stock behaviour (one draw pair per camera actually created).
+        self.rng_static_camera_compat = kwags["camera"].get("rng_static_camera_compat", None)
+
         # embodiment = kwags.get('embodiment')
         # embodiment_config_path = os.path.join(CONFIGS_PATH, '_embodiment_config.yml')
         # with open(embodiment_config_path, 'r', encoding='utf-8') as f:
@@ -95,9 +99,10 @@ class Camera:
 
             camera_config = camera_args[camera_info["type"]]
             cam_pos = np.array(camera_info["position"])
-            vector = np.random.randn(3)
-            random_dir = vector / np.linalg.norm(vector)
-            cam_pos = cam_pos + random_dir * np.random.uniform(low=0, high=random_head_camera_dis)
+            if random_head_camera_dis > 0:
+                vector = np.random.randn(3)
+                random_dir = vector / np.linalg.norm(vector)
+                cam_pos = cam_pos + random_dir * np.random.uniform(low=0, high=random_head_camera_dis)
             cam_forward = np.array(camera_info["forward"]) / np.linalg.norm(np.array(camera_info["forward"]))
             cam_left = np.array(camera_info["left"]) / np.linalg.norm(np.array(camera_info["left"]))
             up = np.cross(cam_forward, cam_left)
@@ -167,6 +172,11 @@ class Camera:
 
         # ================================= static camera =================================
         self.head_camera_id = None
+        if self.rng_static_camera_compat is not None and self.random_head_camera_dis <= 0:
+            for _ in range(int(self.rng_static_camera_compat)):
+                np.random.randn(3)
+                np.random.uniform(low=0, high=self.random_head_camera_dis)
+
         self.static_camera_list = []
         # self.static_sensor_camera_list = []
         self.static_camera_name = []
