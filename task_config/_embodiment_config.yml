@@ -12,3 +12,43 @@ ARX-X5:
 
 ur5-wsg:
   file_path: "./assets/embodiments/ur5-wsg"
+
+# 24 视角索引契约(所有环通用): third_view_0..20 = az -150..+150 步进 15;
+# 21 = +165, 22 = -165, 23 = 180。
+
+# aloha + head 基准 24 视角环(HEAD43_37, 322x238 fovy 37;target
+# (-0.032,-0.1125,0.90), r=0.5625, el 53.1)。third_view_4(az-90)≈ 官方 head 机位。
+aloha-agilex-mv3head:
+  file_path: "./assets/embodiments/aloha-agilex-mv3head/"
+
+# aloha + observer 锚定 24 视角环(MV43_93, 322x238 fovy 93;target
+# (0,-0.1916,0.90), r=0.602, el 45.6 -> 实测 TCP 出画 0%)。third_view_16(az+90)
+# 与官方 observer 机位 (0, 0.23, 1.33) 逐位一致。
+aloha-agilex-mv2:
+  file_path: "./assets/embodiments/aloha-agilex-mv2/"
+
+# aloha + 双环: third_view_0..23 = observer 环(r0.602/el45.6/fovy93),
+# head_view_0..23 = head 环(r0.5625/el53.1/fovy37)。third_view_16 与 head_view_4
+# 分别与官方 observer / head 机位逐位一致。配 collect_wrist_camera 得到 51 路相机。
+aloha-agilex-dual24:
+  file_path: "./assets/embodiments/aloha-agilex-dual24/"
+aloha-agilex-obs16:
+  file_path: "./assets/embodiments/aloha-agilex-obs16/"
+aloha-agilex-head4:
+  file_path: "./assets/embodiments/aloha-agilex-head4/"
+aloha-agilex-obs14:
+  file_path: "./assets/embodiments/aloha-agilex-obs14/"
+aloha-agilex-obs15:
+  file_path: "./assets/embodiments/aloha-agilex-obs15/"
+aloha-agilex-obs17:
+  file_path: "./assets/embodiments/aloha-agilex-obs17/"
+aloha-agilex-obs18:
+  file_path: "./assets/embodiments/aloha-agilex-obs18/"
+aloha-agilex-head2:
+  file_path: "./assets/embodiments/aloha-agilex-head2/"
+aloha-agilex-head3:
+  file_path: "./assets/embodiments/aloha-agilex-head3/"
+aloha-agilex-head5:
+  file_path: "./assets/embodiments/aloha-agilex-head5/"
+aloha-agilex-head6:
+  file_path: "./assets/embodiments/aloha-agilex-head6/"
