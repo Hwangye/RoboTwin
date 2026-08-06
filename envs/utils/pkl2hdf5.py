@@ -81,7 +81,12 @@ def pkl_files_to_hdf5_and_video(pkl_files, hdf5_path, video_path):
         pkl_file = load_pkl_file(pkl_file_path)
         append_data_to_structure(data_list, pkl_file)
 
-    images_to_video(np.array(data_list["observation"]["head_camera"]["rgb"]), out_path=video_path)
+    obs = data_list["observation"]
+    preview_cam = "head_camera" if "head_camera" in obs else next(
+        (c for c in obs if isinstance(obs[c], dict) and "rgb" in obs[c]), None
+    )
+    if preview_cam is not None:
+        images_to_video(np.array(obs[preview_cam]["rgb"]), out_path=video_path)
 
     with h5py.File(hdf5_path, "w") as f:
         create_hdf5_from_dict(f, data_list)
