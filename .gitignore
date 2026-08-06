@@ -20,6 +20,8 @@ assets/*
 !assets/files
 
 policy/weights/*
+# symlink into SpatialAlignVLA (sapolicy/eval/robotwin), created by the eval setup
+policy/SAPolicy
 
 envs/curobo/*
 
