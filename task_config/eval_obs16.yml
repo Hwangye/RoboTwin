@@ -1,0 +1,40 @@
+# 闭环评测:与 offrt 训练数据同规格(rt 光追、322x238、锚点 + 双腕三相机)。
+# rng_static_camera_compat: 2 让场景生成与官方一致 —— 评测场景必须和官方协议
+# 同分布,否则和官方基线的数字没有可比性。
+# 机位:observer 环 az +90(相对官方锚点 +0 度)。由 script/gen_aloha_rigs.py 生成。
+render_freq: 0
+episode_num: 50
+use_seed: false
+save_freq: 15
+embodiment: [aloha-agilex-obs16]
+language_num: 100
+domain_randomization:
+  random_background: false
+  cluttered_table: false
+  clean_background_rate: 1
+  random_head_camera_dis: 0
+  random_table_height: 0
+  random_light: false
+  crazy_random_light_rate: 0
+camera:
+  head_camera_type: D435
+  wrist_camera_type: WRIST43_37
+  collect_head_camera: false
+  collect_wrist_camera: true
+  rng_static_camera_compat: 2
+data_type:
+  rgb: true
+  third_view: false
+  depth: true
+  pointcloud: false
+  observer: false
+  endpose: true
+  qpos: true
+  mesh_segmentation: false
+  actor_segmentation: false
+pcd_down_sample_num: 1024
+pcd_crop: true
+save_path: ./data_eval
+clear_cache_freq: 5
+collect_data: true
+eval_video_log: false
