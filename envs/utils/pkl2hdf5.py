@@ -64,6 +64,13 @@ def create_hdf5_from_dict(hdf5_group, data_dict):
             if "rgb" in key:
                 encode_data, max_len = images_encoding(value)
                 hdf5_group.create_dataset(key, data=encode_data, dtype=f"S{max_len}")
+            elif "depth" in key:
+                # Upstream RoboTwin gzips these; that got lost in this fork's
+                # cleanup. Depth is float64 mm over mostly-smooth surfaces and
+                # compresses 8-13x -- uncompressed, a 48-view rig is ~3.5 GB
+                # per episode.
+                hdf5_group.create_dataset(key, data=value,
+                                          compression="gzip", compression_opts=1)
             else:
                 hdf5_group.create_dataset(key, data=value)
         else:
