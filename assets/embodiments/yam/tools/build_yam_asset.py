@@ -39,6 +39,20 @@ SPHERES = {
 # ------------------------------------------------------------------- limits --
 # Upstream ships effort="1" velocity="1" on every joint. Real motor ranges come
 # from the vendor MJCF actuator classes: dm4340 +-28 Nm, dm4310 +-10 Nm.
+# ------------------------------------------------------------------ colors --
+# The Onshape export assigns arbitrary per-part colors (purple base, teal tube,
+# pink wrist). The real YAM is matte black with white arm tubes; values follow
+# the vendor-tuned MJCF (i2rt via the ABC project): black 0.06, white 0.9.
+# link2/link3 are single merged meshes, so the whole tube link goes white.
+BLACK, WHITE = "0.06 0.06 0.06 1", "0.9 0.9 0.9 1"
+MATERIALS = {
+    'base': BLACK, 'link1': BLACK, 'link2': WHITE, 'link3': WHITE,
+    'link4': BLACK, 'link5': BLACK, 'gripper': BLACK,
+    'tip_left': BLACK, 'tip_right': BLACK,
+    'camera_bracket': BLACK, 'camera_cable_holder': BLACK,
+    'camera_body': BLACK, 'camera_cover': BLACK,
+}
+
 LIMITS = {
     'joint1': (28, 3.14), 'joint2': (28, 3.14), 'joint3': (28, 3.14),
     'joint4': (10, 3.14), 'joint5': (10, 3.14), 'joint6': (10, 3.14),
@@ -102,6 +116,16 @@ for link in root.findall('link'):
         g = ET.SubElement(col, 'geometry')
         ET.SubElement(g, 'box').set('size', ' '.join(f'{x:.6g}' for x in ext))
         n_boxes += 1
+
+for link in root.findall('link'):
+    rgba = MATERIALS.get(link.get('name'))
+    if rgba:
+        for v in link.findall('visual'):
+            m = v.find('material')
+            if m is not None:
+                c = m.find('color')
+                if c is not None:
+                    c.set('rgba', rgba)
 
 for joint in root.findall('joint'):
     lim = joint.find('limit')

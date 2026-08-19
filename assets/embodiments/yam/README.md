@@ -50,7 +50,11 @@ placeholder actuator limits. Everything needed to simulate it was added here.
    (+z forward, +y down). Renamed to `camera_optical` and a new `camera` link
    added under it rotated into SAPIEN's convention (+x forward, +y left,
    +z up), which is what RoboTwin feeds to `update_wrist_camera`.
-4. **Camera collision removed** — the D405 bracket sticks out 80 mm sideways
+4. **Materials** — the Onshape export assigns arbitrary per-part colors
+   (purple base, teal tube, pink wrist). Repainted to the real machine's
+   scheme, following the vendor-tuned MJCF: matte black (0.06) everywhere,
+   white (0.9) for the two arm-tube links. Visual only.
+5. **Camera collision removed** — the D405 bracket sticks out 80 mm sideways
    from the gripper axis and knocks table objects over during a side approach.
    The camera links keep their visuals (so the wrist view is right) but carry
    no collision. Deliberate deviation from the real hardware.
