@@ -3,6 +3,23 @@
 Single-arm 6-DoF YAM with the I2RT `linear_4310` parallel-jaw gripper and a
 D405 wrist camera. Used bimanually as `embodiment: [yam, yam, <spacing>]`.
 
+## Reproducing the lift_pot dataset from a fresh clone
+
+```bash
+python assets/_download.py                        # objects.zip etc. (standard RoboTwin assets)
+python script/update_embodiment_config_path.py    # expand curobo_tmp.yml -> curobo.yml (abs paths)
+python script/plan_seed_list.py lift_pot collect_yam task_config/lift_pot_official_seeds.txt
+python script/collect_data.py lift_pot collect_yam
+```
+
+Step 3 plans the official aloha seed list (the one `replay_official` was
+collected on) and writes `_traj_data/` + `seed.txt`; step 4 replays those into
+hdf5 + video + instructions under `data/lift_pot/collect_yam/`. Expected:
+50/50 kept, 101-110 frames per episode at `save_freq 15`. Note
+`collect_data.sh` calls a `script/.update_path.sh` that is not in the repo (it
+no-ops silently) -- run `update_embodiment_config_path.py` yourself, once per
+checkout location.
+
 ## Provenance
 
 | file | origin |
