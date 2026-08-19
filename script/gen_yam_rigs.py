@@ -29,8 +29,9 @@ RIGS = {
 }
 GITATTRIBUTES = """\
 # assets/embodiments/.gitattributes routes *.yml through Git LFS; GitHub
-# refuses new LFS objects on public forks. Same opt-out as ../yam/.
-* -filter -diff -merge
+# refuses new LFS objects on public forks. `!` resets to unspecified (default
+# text handling); `-` would force binary diffs. Same opt-out as ../yam/.
+* !filter !diff !merge !text
 """
 
 
