@@ -58,3 +58,8 @@ aloha-agilex-head6:
 # 见 assets/embodiments/yam/README.md。
 yam:
   file_path: "./assets/embodiments/yam"
+
+# yam + observer 锚定 24 视角环(与 aloha-agilex-mv2 完全相同的机位与索引契约;
+# third_view_16 = 官方 observer)。由 script/gen_yam_rigs.py 生成。
+yam-mv2:
+  file_path: "./assets/embodiments/yam-mv2"
