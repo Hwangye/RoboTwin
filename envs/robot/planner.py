@@ -1,3 +1,4 @@
+import os
 import mplib.planner
 import mplib
 import numpy as np
@@ -52,22 +53,57 @@ try:
             with open(self.yml_path, "r") as f:
                 yml_data = yaml.safe_load(f)
             self.frame_bias = yml_data["planner"]["frame_bias"]
+            # The legacy table cuboid below is expressed with a hand-rolled (and
+            # sign-flipped) base transform, which lands it behind the robot. Arms
+            # mounted high above the table never noticed; a table-mounted arm has
+            # to have it right. Opt in per embodiment with `planner.exact_table`.
+            self.exact_table = yml_data["planner"].get("exact_table", False)
+            # curobo counts a plan as Success once it is within these of the goal;
+            # its defaults (5 mm / 0.05) are loose enough that the returned final
+            # joint config can sit 3-5 deg off the commanded gripper pose, which
+            # is more than a thin-plate grasp tolerates. Opt in per embodiment.
+            self.goal_tol = {}
+            for key in ("position_threshold", "rotation_threshold"):
+                if key in yml_data["planner"]:
+                    self.goal_tol[key] = yml_data["planner"][key]
+            # MotionGenPlanConfig knobs. curobo's finetune stage reports
+            # DT_EXCEPTION when it cannot settle on a trajectory dt from a given
+            # start state; these are the levers for that.
+            self.plan_opts = {}
+            for key in ("enable_finetune_trajopt", "finetune_dt_scale",
+                        "finetune_attempts", "max_attempts"):
+                if key in yml_data["planner"]:
+                    self.plan_opts[key] = yml_data["planner"][key]
+            # The finetune stage is also what re-times the trajectory to be
+            # time-optimal; turning it off makes every move ~2x longer. With
+            # `finetune_fallback: true` the planner tries with finetune first
+            # and only drops it for the queries where it fails (DT_EXCEPTION).
+            self.finetune_fallback = yml_data["planner"].get("finetune_fallback", False)
 
             # motion generation
             if True:
+                if self.exact_table:
+                    # cuboid is 0.04 thick, so drop its centre half a thickness
+                    # below the 0.74 table top instead of centring it on it
+                    R = t3d.quaternions.quat2mat(self.robot_origion_pose.q)
+                    center = R.T @ (np.array([0.0, 0.0, 0.72]) - np.array(self.robot_origion_pose.p))
+                    quat = t3d.quaternions.qinverse(np.array(self.robot_origion_pose.q))
+                    table_pose = list(center) + list(quat)
+                else:
+                    table_pose = [
+                        self.robot_origion_pose.p[1],
+                        0.0,
+                        0.74 - self.robot_origion_pose.p[2],
+                        1,
+                        0,
+                        0,
+                        0.0,
+                    ]  # x, y, z, qw, qx, qy, qz
                 world_config = {
                     "cuboid": {
                         "table": {
                             "dims": [0.7, 2, 0.04],  # x, y, z
-                            "pose": [
-                                self.robot_origion_pose.p[1],
-                                0.0,
-                                0.74 - self.robot_origion_pose.p[2],
-                                1,
-                                0,
-                                0,
-                                0.0,
-                            ],  # x, y, z, qw, qx, qy, qz
+                            "pose": table_pose,
                         },
                     }
                 }
@@ -76,6 +112,7 @@ try:
                 world_config,
                 interpolation_dt=1 / 250,
                 num_trajopt_seeds=1,
+                **self.goal_tol,
             )
 
             self.motion_gen = MotionGen(motion_gen_config)
@@ -86,6 +123,7 @@ try:
                 interpolation_dt=1 / 250,
                 num_trajopt_seeds=1,
                 num_graph_seeds=1,
+                **self.goal_tol,
             )
             self.motion_gen_batch = MotionGen(motion_gen_config)
             self.motion_gen_batch.warmup(batch=CONFIGS.ROTATE_NUM)
@@ -132,7 +170,7 @@ try:
                 joint_names=self.active_joints_name,
             )
             # plan
-            plan_config = MotionGenPlanConfig(max_attempts=10)
+            plan_config = MotionGenPlanConfig(**{"max_attempts": 10, **self.plan_opts})
             if constraint_pose is not None:
                 pose_cost_metric = PoseCostMetric(
                     hold_partial_pose=True,
@@ -141,11 +179,26 @@ try:
                 plan_config.pose_cost_metric = pose_cost_metric
 
             result = self.motion_gen.plan_single(start_joint_states, goal_pose_of_ee, plan_config)
+            if (result.success.item() == False and self.finetune_fallback
+                    and plan_config.enable_finetune_trajopt):
+                first = str(getattr(result, "status", None))
+                plan_config.enable_finetune_trajopt = False
+                result = self.motion_gen.plan_single(start_joint_states, goal_pose_of_ee, plan_config)
+                if os.environ.get("ROBOTWIN_PLAN_DEBUG"):
+                    n = (result.interpolated_plan.position.shape[0] if result.success.item() else -1)
+                    print(f"[curobo] {arms_tag}: finetune failed ({first}); fallback -> "
+                          f"{'Success %d steps' % n if n >= 0 else 'Fail ' + str(getattr(result, 'status', None))}")
+            elif os.environ.get("ROBOTWIN_PLAN_DEBUG") and result.success.item():
+                print(f"[curobo] {arms_tag}: finetune ok, {result.interpolated_plan.position.shape[0]} steps")
 
             # output
             res_result = dict()
             if result.success.item() == False:
                 res_result["status"] = "Fail"
+                res_result["reason"] = str(getattr(result, "status", None))
+                if os.environ.get("ROBOTWIN_PLAN_DEBUG"):
+                    print(f"[curobo] {arms_tag} plan failed: {res_result['reason']}"
+                          f" (valid_query={getattr(result, 'valid_query', None)})")
                 return res_result
             else:
                 res_result["status"] = "Success"
@@ -217,7 +270,7 @@ try:
             joint_angles_cuda = torch.cat([joint_angles_cuda] * num_poses, dim=0)
             start_joint_states = JointState.from_position(joint_angles_cuda, joint_names=self.active_joints_name)
             # plan
-            plan_config = MotionGenPlanConfig(max_attempts=10)
+            plan_config = MotionGenPlanConfig(**{"max_attempts": 10, **self.plan_opts})
             if constraint_pose is not None:
                 pose_cost_metric = PoseCostMetric(
                     hold_partial_pose=True,
@@ -236,6 +289,14 @@ try:
             success_array = result.success.cpu().numpy()
             status_array = np.array(["Success" if s else "Failure" for s in success_array], dtype=object)
             res_result["status"] = status_array
+
+            if os.environ.get("ROBOTWIN_PLAN_DEBUG"):
+                # the single-path planner already reports its reason; without the
+                # same here, a grasp that finds no candidate looks like "the pose
+                # is unreachable" when it is usually the trajectory stage failing
+                print(f"[curobo] {arms_tag} batch: {int(success_array.sum())}/{len(success_array)}"
+                      f" planned, status={getattr(result, 'status', None)},"
+                      f" valid_query={getattr(result, 'valid_query', None)}")
 
             if np.all(res_result["status"] == "Failure"):
                 return res_result

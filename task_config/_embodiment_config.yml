@@ -52,3 +52,9 @@ aloha-agilex-head5:
   file_path: "./assets/embodiments/aloha-agilex-head5/"
 aloha-agilex-head6:
   file_path: "./assets/embodiments/aloha-agilex-head6/"
+
+# I2RT YAM 单臂 6-DoF + linear_4310 夹爪 + D405 腕部相机。双臂用
+# [yam, yam, 0.80]：ABC 真机站是 0.62，但正对抓取在 0.76 以下不可达，
+# 见 assets/embodiments/yam/README.md。
+yam:
+  file_path: "./assets/embodiments/yam"

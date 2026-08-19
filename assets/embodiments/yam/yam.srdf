@@ -1,0 +1,47 @@
+<?xml version="1.0" ?>
+<robot name="yam_linear_4310_d405">
+  <!-- NOTE: sapien's URDFLoader.parse_srdf only honours reason="Default";
+       "Never"/"Adjacent" pairs are silently ignored, so every pair here that
+       has to hold in simulation is written as "Default". -->
+  <group name="arm">
+    <joint name="joint1"/>
+    <joint name="joint2"/>
+    <joint name="joint3"/>
+    <joint name="joint4"/>
+    <joint name="joint5"/>
+    <joint name="joint6"/>
+    <chain base_link="base" tip_link="gripper"/>
+  </group>
+
+  <disable_collisions link1="base" link2="link1" reason="Default"/>
+  <disable_collisions link1="link1" link2="link2" reason="Default"/>
+  <disable_collisions link1="link2" link2="link3" reason="Default"/>
+  <disable_collisions link1="link3" link2="link4" reason="Default"/>
+  <disable_collisions link1="link4" link2="link5" reason="Default"/>
+  <disable_collisions link1="link5" link2="gripper" reason="Default"/>
+  <disable_collisions link1="gripper" link2="tip_left" reason="Default"/>
+  <disable_collisions link1="gripper" link2="tip_right" reason="Default"/>
+  <disable_collisions link1="gripper" link2="camera_bracket" reason="Default"/>
+  <disable_collisions link1="camera_bracket" link2="camera_body" reason="Default"/>
+
+  <!-- The two L-shaped fingers reach across each other; the real parts clear,
+       the box collision proxies of their mounting plates do not. -->
+  <disable_collisions link1="tip_left" link2="tip_right" reason="Default"/>
+
+  <!-- wrist camera assembly rides on the gripper and never hits its siblings -->
+  <disable_collisions link1="camera_bracket" link2="tip_left" reason="Default"/>
+  <disable_collisions link1="camera_bracket" link2="tip_right" reason="Default"/>
+  <disable_collisions link1="camera_body" link2="tip_left" reason="Default"/>
+  <disable_collisions link1="camera_body" link2="tip_right" reason="Default"/>
+  <disable_collisions link1="camera_bracket" link2="link5" reason="Default"/>
+  <disable_collisions link1="camera_body" link2="link5" reason="Default"/>
+  <disable_collisions link1="camera_bracket" link2="link4" reason="Default"/>
+  <disable_collisions link1="camera_body" link2="link4" reason="Default"/>
+
+  <!-- wrist passes close to the forearm over the joint4/joint5 range -->
+  <disable_collisions link1="gripper" link2="link4" reason="Default"/>
+  <disable_collisions link1="tip_left" link2="link4" reason="Default"/>
+  <disable_collisions link1="tip_right" link2="link4" reason="Default"/>
+  <disable_collisions link1="link3" link2="link5" reason="Default"/>
+  <disable_collisions link1="base" link2="link2" reason="Default"/>
+</robot>

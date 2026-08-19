@@ -55,6 +55,21 @@ class Robot:
         self.left_gripper_scale = left_embodiment_args["gripper_scale"]
         self.left_homestate = left_embodiment_args.get("homestate", [[0] * len(self.left_arm_joints_name)])[0]
         self.left_fix_gripper_name = left_embodiment_args.get("fix_gripper_name", [])
+        # extra physics steps held at the last waypoint, so the arm settles onto
+        # the commanded pose instead of the move ending on drive lag
+        self.left_settle_steps = left_embodiment_args.get("settle_steps", 0)
+        # hold_vec_weight for the pre-grasp -> grasp segment, in RoboTwin's canonical
+        # grasp frame: first three are rotation, last three translation, and +x is
+        # the approach. The default [1,1,1,0,0,0] holds orientation but leaves
+        # translation entirely free, so that "straight line in" is free to bow
+        # sideways. [1,1,1,0,1,1] frees only the approach axis.
+        self.left_grasp_constraint = left_embodiment_args.get("grasp_constraint", [1, 1, 1, 0, 0, 0])
+        self.left_gripper_symmetric = left_embodiment_args.get("gripper_symmetric", False)
+        self.left_prefer_joint_margin = left_embodiment_args.get("prefer_joint_margin", False)
+        # extra travel along the approach axis for grasp_actor's pre-grasp and
+        # grasp poses (m). Puts the object deeper into the jaw than the annotated
+        # contact point; needed when the pads are short.
+        self.left_grasp_depth = left_embodiment_args.get("grasp_depth", 0.0)
         self.left_delta_matrix = np.array(left_embodiment_args.get("delta_matrix", [[1, 0, 0], [0, 1, 0], [0, 0, 1]]))
         self.left_inv_delta_matrix = np.linalg.inv(self.left_delta_matrix)
         self.left_global_trans_matrix = np.array(
@@ -82,6 +97,14 @@ class Robot:
         self.right_gripper_scale = right_embodiment_args["gripper_scale"]
         self.right_homestate = right_embodiment_args.get("homestate", [[1] * len(self.right_arm_joints_name)])[1]
         self.right_fix_gripper_name = right_embodiment_args.get("fix_gripper_name", [])
+        self.right_settle_steps = right_embodiment_args.get("settle_steps", 0)
+        self.right_grasp_constraint = right_embodiment_args.get("grasp_constraint", [1, 1, 1, 0, 0, 0])
+        self.right_gripper_symmetric = right_embodiment_args.get("gripper_symmetric", False)
+        self.right_prefer_joint_margin = right_embodiment_args.get("prefer_joint_margin", False)
+        # extra travel along the approach axis for grasp_actor's pre-grasp and
+        # grasp poses (m). Puts the object deeper into the jaw than the annotated
+        # contact point; needed when the pads are short.
+        self.right_grasp_depth = right_embodiment_args.get("grasp_depth", 0.0)
         self.right_delta_matrix = np.array(right_embodiment_args.get("delta_matrix", [[1, 0, 0], [0, 1, 0], [0, 0, 1]]))
         self.right_inv_delta_matrix = np.linalg.inv(self.right_delta_matrix)
         self.right_global_trans_matrix = np.array(
@@ -146,8 +169,16 @@ class Robot:
     def create_target_pose_list(self, origin_pose, center_pose, arm_tag=None):
         res_lst = []
         rotate_lim = (self.left_rotate_lim if arm_tag == "left" else self.right_rotate_lim)
-        rotate_step = (rotate_lim[1] - rotate_lim[0]) / CONFIGS.ROTATE_NUM
-        for i in range(CONFIGS.ROTATE_NUM):
+        # A parallel jaw grasps the same way after a half turn about its approach
+        # axis, and the two roll solutions can be far apart in wrist angle -- one
+        # may sit on the wrist's stop while the other has room. When the
+        # embodiment declares a symmetric gripper, spend half the candidate
+        # budget on each roll; the batch planner is warmed up for exactly
+        # ROTATE_NUM goals, so the total has to stay put.
+        symmetric = (self.left_gripper_symmetric if arm_tag == "left" else self.right_gripper_symmetric)
+        n_rot = CONFIGS.ROTATE_NUM // 2 if symmetric else CONFIGS.ROTATE_NUM
+        rotate_step = (rotate_lim[1] - rotate_lim[0]) / n_rot
+        for i in range(n_rot):
             now_pose = transforms.rotate_along_axis(
                 origin_pose,
                 center_pose,
@@ -157,6 +188,10 @@ class Robot:
                 towards=[0, -1, 0],
             )
             res_lst.append(now_pose)
+            if symmetric:
+                pose = np.array(now_pose, dtype=np.float64)
+                q = t3d.quaternions.qmult(pose[-4:], t3d.quaternions.axangle2quat([1, 0, 0], np.pi))
+                res_lst.append(pose[:3].tolist() + list(q))
         return res_lst
 
     def get_constraint_pose(self, ori_vec: list, arm_tag=None):

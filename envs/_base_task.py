@@ -109,6 +109,10 @@ class Base_Task(gym.Env):
 
         self.eval_success = False
         self.table_z_bias = (np.random.uniform(low=-self.random_table_height, high=0) + table_height_bias)  # TODO
+        # Force a specific asset variant per model name, e.g. {"060_kitchenpot": 0}.
+        # Tasks that honour it still draw the random id first, so a seed lands the
+        # same object pose whether or not the variant is pinned.
+        self.model_ids = kwags.get("model_ids", None) or {}
         self.need_plan = kwags.get("need_plan", True)
         self.left_joint_path = kwags.get("left_joint_path", [])
         self.right_joint_path = kwags.get("right_joint_path", [])
@@ -881,8 +885,43 @@ class Base_Task(gym.Env):
                 self._take_picture()
             i += 1
 
+        self._settle(save_freq)
+
         if save_freq != None:
             self._take_picture()
+
+    def _settle(self, save_freq=None, arms=("left", "right")):
+        """Hold the last commanded drive target until the arm stops moving.
+
+        A move otherwise ends the instant the final waypoint is written, so the
+        arm stops wherever the drive lag left it. Opt in per embodiment with
+        `settle_steps` (an upper bound); the loop exits early once every arm
+        joint is below 0.02 rad/s. 0, the default, reproduces the original
+        behaviour. Gripper-only actions do not settle -- there is nothing to
+        converge and it just burns frames.
+        """
+        if not arms:
+            return
+        steps = max(
+            getattr(self.robot, "left_settle_steps", 0),
+            getattr(self.robot, "right_settle_steps", 0),
+        )
+        watch = []   # (entity, [qvel indices of its arm joints])
+        for arm, ent, jn in (("left", self.robot.left_entity, self.robot.left_arm_joints_name),
+                             ("right", self.robot.right_entity, self.robot.right_arm_joints_name)):
+            if arm in arms:
+                names = [j.get_name() for j in ent.get_active_joints()]
+                watch.append((ent, [names.index(n) for n in jn]))
+        for i in range(steps):
+            self.robot._entity_qf(self.robot.left_entity)
+            self.robot._entity_qf(self.robot.right_entity)
+            self.scene.step()
+            if save_freq is not None and i % save_freq == 0:
+                self._update_render()
+                self._take_picture()
+            if i >= 20 and max(float(np.abs(np.asarray(ent.get_qvel())[idx]).max())
+                                for ent, idx in watch) < 0.02:
+                break
 
     def move(
         self,
@@ -1017,13 +1056,35 @@ class Base_Task(gym.Env):
         target_lst = self.robot.create_target_pose_list(res_pose, center_pose, arm_tag)
         pose_num = len(target_lst)
         traj_lst = plan_multi_pose(target_lst)
+
+        prefer_margin = (self.robot.left_prefer_joint_margin
+                         if arm_tag == "left" else self.robot.right_prefer_joint_margin)
+        joints = (self.robot.left_arm_joints if arm_tag == "left" else self.robot.right_arm_joints)
+
+        def joint_margin(qpos):
+            """How far the arm still is from its nearest joint stop, in rad."""
+            out = []
+            for j, q in zip(joints, qpos):
+                lo, hi = j.get_limits()[0]
+                out.append(min(q - lo, hi - q))
+            return min(out)
+
         now_pose = None
-        now_step = -1
+        best_margin = -np.inf
         for i in range(pose_num):
             if traj_lst["status"][i] != "Success":
                 continue
-            if now_pose is None or len(traj_lst["position"][i]) < now_step:
-                now_pose = target_lst[i]
+            if not prefer_margin:
+                # original behaviour: first reachable candidate wins
+                if now_pose is None:
+                    now_pose = target_lst[i]
+                continue
+            # A candidate that arrives with a joint already on its stop is
+            # reachable but useless: every follow-up move that holds orientation
+            # is then infeasible, so the lift after the grasp fails.
+            margin = joint_margin(traj_lst["position"][i][-1])
+            if margin > best_margin:
+                now_pose, best_margin = target_lst[i], margin
         return now_pose
 
     # test grasp pose of all contact points
@@ -1167,6 +1228,11 @@ class Base_Task(gym.Env):
             return res_pre_side_pose, res_side_pose
         return res_pre_pose, res_pose
 
+    def _grasp_constraint(self, arm_tag: ArmTag):
+        """hold_vec_weight for the pre-grasp -> grasp segment (see robot.py)."""
+        return (self.robot.left_grasp_constraint
+                if arm_tag == "left" else self.robot.right_grasp_constraint)
+
     def grasp_actor(
         self,
         actor: Actor,
@@ -1191,7 +1257,7 @@ class Base_Task(gym.Env):
                         arm_tag,
                         "move",
                         target_pose=[0, 0, 0, 0, 0, 0, 0],
-                        constraint_pose=[1, 1, 1, 0, 0, 0],
+                        constraint_pose=self._grasp_constraint(arm_tag),
                     ),
                     Action(arm_tag, "close", target_gripper_pos=gripper_pos),
                 ]
@@ -1203,6 +1269,15 @@ class Base_Task(gym.Env):
             target_dis=grasp_dis,
             contact_point_id=contact_point_id,
         )
+        depth = (self.robot.left_grasp_depth if arm_tag == "left" else self.robot.right_grasp_depth)
+        if depth and pre_grasp_pose is not None and grasp_pose is not None:
+            # slide both poses deeper along their own approach axis, so the
+            # straight-in segment keeps its length and direction
+            def deeper(pose):
+                pose = np.array(pose, dtype=np.float64)
+                pose[:3] += t3d.quaternions.quat2mat(pose[3:])[:, 0] * depth
+                return pose.tolist()
+            pre_grasp_pose, grasp_pose = deeper(pre_grasp_pose), deeper(grasp_pose)
         if pre_grasp_pose == grasp_pose:
             return arm_tag, [
                 Action(arm_tag, "move", target_pose=pre_grasp_pose),
@@ -1215,7 +1290,7 @@ class Base_Task(gym.Env):
                     arm_tag,
                     "move",
                     target_pose=grasp_pose,
-                    constraint_pose=[1, 1, 1, 0, 0, 0],
+                    constraint_pose=self._grasp_constraint(arm_tag),
                 ),
                 Action(arm_tag, "close", target_gripper_pos=gripper_pos),
             ]
@@ -1473,6 +1548,8 @@ class Base_Task(gym.Env):
             if save_freq != None and control_idx % save_freq == 0:
                 self._update_render()
                 self._take_picture()
+
+        self._settle(save_freq, arms=tuple(a for a, arm in (("left", left_arm), ("right", right_arm)) if arm is not None))
 
         if save_freq != None:
             self._take_picture()

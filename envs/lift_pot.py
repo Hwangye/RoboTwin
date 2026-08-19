@@ -11,7 +11,10 @@ class lift_pot(Base_Task):
 
     def load_actors(self):
         self.model_name = "060_kitchenpot"
-        self.model_id = np.random.randint(0, 2)
+        # Draw regardless, so pinning the variant does not shift the RNG stream
+        # and a seed keeps landing the same pot pose.
+        rand_model_id = np.random.randint(0, 2)
+        self.model_id = self.model_ids.get(self.model_name, rand_model_id)
         self.pot = rand_create_sapien_urdf_obj(
             scene=self,
             modelname=self.model_name,

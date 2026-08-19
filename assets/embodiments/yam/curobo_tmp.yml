@@ -1,0 +1,89 @@
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: False
+    usd_path: null
+    usd_robot_root: null
+    isaac_usd_path: null
+    usd_flip_joints: {}
+    usd_flip_joint_limits: {}
+
+    urdf_path: ${ASSETS_PATH}/assets/embodiments/yam/yam.urdf
+    asset_root_path: null
+    base_link: "base"
+    ee_link: "gripper"
+    # `base` is bolted to the table top, so its spheres always intersect the
+    # table cuboid -- listing it would put every start state in collision
+    collision_link_names:
+      [
+        "link1",
+        "link2",
+        "link3",
+        "link4",
+        "link5",
+        "gripper",
+        "tip_left",
+        "tip_right"
+      ]
+    collision_spheres: ${ASSETS_PATH}/assets/embodiments/yam/collision_yam.yml
+    collision_sphere_buffer: 0.001
+    extra_collision_spheres: null
+    use_global_cumul: True
+    self_collision_ignore:
+      {
+        "link1": ["link2"],
+        "link2": ["link3"],
+        "link3": ["link4", "link5"],
+        "link4": ["link5", "gripper", "tip_left", "tip_right"],
+        "link5": ["gripper", "tip_left", "tip_right"],
+        "gripper": ["tip_left", "tip_right"],
+        "tip_left": ["tip_right"]
+      }
+    self_collision_buffer:
+      {
+        "link1": 0.0,
+        "link2": 0.0,
+        "link3": 0.0,
+        "link4": 0.0,
+        "link5": 0.0,
+        "gripper": 0.0,
+        "tip_left": 0.0,
+        "tip_right": 0.0
+      }
+    mesh_link_names:
+      [
+        "link1",
+        "link2",
+        "link3",
+        "link4",
+        "link5",
+        "gripper",
+        "tip_left",
+        "tip_right"
+      ]
+    # tasks approach at half opening (close_gripper(pos=0.5)); locking the
+    # planner fully open would fake a 94 mm sweep the arm never actually makes
+    lock_joints: {"joint7": -0.0235, "joint8": -0.0235}
+    extra_links: null
+    cspace:
+      joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5",
+                    "joint6", "joint7", "joint8"]
+      retract_config: [0.0, 1.047, 1.047, 0.0, 0.0, 0.0, -0.0235, -0.0235]
+      null_space_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      cspace_distance_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      max_jerk: 100.0
+      max_acceleration: 3.0
+planner:
+  # curobo base_link == urdf root link, so no offset
+  frame_bias: [0., 0., 0.]
+  # table-mounted arm: the planner must see the real table, not the legacy
+  # mirrored one (see CuroboPlanner.__init__)
+  exact_table: true
+  # curobo's defaults (0.005 / 0.05) let a "Success" land 3-5 deg off the
+  # commanded pose -- too loose to close a 94 mm jaw on a 4 mm plate
+  position_threshold: 0.002
+  rotation_threshold: 0.010
+  # curobo's finetune trajopt cannot settle on a trajectory dt from the
+  # post-grasp state (DT_EXCEPTION for every target, even zero-length). But the
+  # finetune stage is also the time-optimal re-timing -- without it every move
+  # is ~2x longer. So: plan with finetune, retry without only where it fails.
+  finetune_fallback: true

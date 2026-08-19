@@ -1,0 +1,6 @@
+# The parent assets/embodiments/.gitattributes (shipped with the downloaded
+# asset bundle) routes *.stl/*.urdf/*.yml/*.srdf through Git LFS, and GitHub
+# refuses new LFS objects on public forks. This embodiment is small (~8 MB),
+# so store it as plain git objects, like the tracked aloha rig configs.
+* -filter -diff -merge
+*.stl binary

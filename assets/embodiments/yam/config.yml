@@ -1,0 +1,95 @@
+# I2RT YAM (6-DoF arm + linear_4310 parallel gripper + D405 wrist camera).
+# URDF/meshes: github.com/i2rt-robotics/i2rt, i2rt/robot_models/arm/yam/v1 (MIT).
+# Collision boxes, SRDF, curobo config and the frame calibration below are
+# generated locally -- the upstream URDF is visual-only.
+urdf_path: "./yam.urdf"
+srdf_path: "./yam.srdf"
+# hold the last waypoint for 400 steps at the end of every move: curobo now
+# lands the goal to ~0.02 deg, and this stops the drive lag from giving that
+# accuracy back (see README.md)
+# hold_vec_weight for the pre-grasp -> grasp segment: rotation held, translation
+# free -- the same as every other embodiment. Do NOT put 1s in the translation
+# slots: curobo leaks that partial-pose hold into the MotionGen instance and every
+# later plan from it (the lift) fails with FINETUNE_TRAJOPT_FAIL / DT_EXCEPTION,
+# and the segment itself gets ~2.5x slower. With the goal tolerance and settle
+# below the free segment already tracks a straight line to within 4 mm.
+grasp_constraint: [1, 1, 1, 0, 0, 0]
+# YAM's wrist roll is only +/-120 deg, and the canonical grasp orientation lands
+# it exactly on that stop -- reachable, but then the lift after the grasp has no
+# room left. Offer the half-turn-equivalent grasps too, and pick the candidate
+# that arrives furthest from any joint stop instead of the first that plans.
+gripper_symmetric: true
+prefer_joint_margin: true
+# upper bound; the loop exits as soon as the arm joints are below 0.02 rad/s,
+# and gripper-only actions do not settle at all
+settle_steps: 150
+# 060_kitchenpot's handle is a rod with a ball at the end, and the annotated
+# contact point is on the ball, ~10 mm past the pad tip at depth 0 -- a
+# fingertip pinch on the ball. aloha's pads sit 20-36 mm past its TCP, so it
+# actually clamps the ROD with the ball hooked behind the pads. +20 mm gives
+# YAM the same grasp: pads on the rod at +13..+24 mm, ball inside the jaw,
+# fingertips 10-15 mm from the pot wall.
+grasp_depth: 0.020
+joint_stiffness: 1000
+joint_damping: 200
+gripper_stiffness: 1000
+gripper_damping: 200
+move_group: ["gripper", "gripper"]
+ee_joints: ["joint6", "joint6"]
+arm_joints_name: [['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
+                  ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6']]
+gripper_name:
+  - base: "joint7"
+    mimic: [["joint8", 1., 0.]]
+  - base: "joint7"
+    mimic: [["joint8", 1., 0.]]
+# Flange (`gripper` link origin) -> fingertip pad centre: the pad contact face
+# spans z -0.1468..-0.1292 in the gripper frame, so its centre is 0.138.
+gripper_bias: 0.138
+# joint7/joint8 value at closed and fully open (94.0 mm). The closed end is
+# 10 mm *past* the joint limit on purpose: the joint stops at the limit and the
+# drive keeps pushing, which is the squeeze force (aloha-agilex does the same).
+gripper_scale: [0.010, -0.04695]
+homestate: [[0, 1.047, 1.047, 0, 0, 0], [0, 1.047, 1.047, 0, 0, 0]]
+# approach axis is -z of the `gripper` link, closing axis is +y; both calibrated
+# against aloha-agilex (see README.md)
+delta_matrix: [[0, 0, 1], [0, 1, 0], [-1, 0, 0]]
+global_trans_matrix: [[0, 0, -1], [0, -1, 0], [-1, 0, 0]]
+# Table top is 0.74; the arms sit on a 60 mm riser (0.80). At table level the
+# forearm has to dip ~12 mm below the surface to reach the canonical side-grasp
+# poses. Base yaw does not matter for reach (joint1 absorbs it) -- arm SPACING
+# does: use `embodiment: [yam, yam, 0.80]`, see README.md.
+robot_pose: [[0, -0.45, 0.80, 0.707, 0, 0, 0.707]]
+planner: "curobo"
+dual_arm: False
+rotate_lim: [0, 1]
+grasp_perfect_direction: ['front_right', 'front_left']
+static_camera_list:
+- name: head_camera
+  type: D435
+  position:
+  - -0.032
+  - -0.45
+  - 1.35
+  forward:
+  - 0
+  - 0.6
+  - -0.8
+  left:
+  - -1
+  - 0
+  - 0
+- name: front_camera
+  type: D435
+  position:
+  - 0
+  - -0.45
+  - 0.85
+  forward:
+  - 0
+  - 1
+  - -0.1
+  left:
+  - -1
+  - 0
+  - 0
